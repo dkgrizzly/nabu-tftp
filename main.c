@@ -10,10 +10,10 @@
 #include "packet.h"
 #include "duart.h"
 #include "wifi.h"
+#include "pico_hal.h"
 
 uint16_t channelWord = 0;
 int channelValid = 1;
-
 
 void adapterInit() {
     duart_sendByte(0x10);
@@ -197,6 +197,27 @@ int main() {
 
     //stdio_uart_init_full(uart0, 115200, 12, 13);
     stdio_usb_init();
+
+    // Try mounting the LittleFS, or format if it isn't there.
+    if(pico_mount(0) != LFS_ERR_OK) {
+        if(pico_mount(1) != LFS_ERR_OK) {
+            printf("Unable to mount or format LittleFS.\r\n");
+        } else {
+            printf("Not configured.\r\n");
+        }
+    } else {
+        int file = pico_open("config", LFS_O_RDONLY);
+        if(file < 0) {
+            printf("Not configured.\r\n");
+        } else {
+            pico_read(file, &wifi_ssid, sizeof(wifi_ssid));
+            pico_read(file, &wifi_psk, sizeof(wifi_psk));
+            pico_read(file, &wifi_auth, sizeof(wifi_auth));
+            pico_read(file, &tftp_server_ip, sizeof(tftp_server_ip));
+            wifi_configured = 1;
+            pico_close(file);
+        }
+    }
 
     initializePacketRequestQueue();
     initializePacketPayloadQueue();

@@ -11,6 +11,8 @@ set(CMAKE_C_STANDARD 11)
 
 pico_sdk_init()
 
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DPICO_USE_MALLOC_MUTEX=1")
+
 add_executable(nabutftp)
 
 pico_generate_pio_header(nabutftp
@@ -33,13 +35,17 @@ target_sources(nabutftp PUBLIC
     wifi.c
     tftp.c
 )
+
 target_include_directories(nabutftp PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+add_subdirectory(lib/littlefs)
+
 target_link_libraries(nabutftp PUBLIC
     pico_multicore
     pico_stdlib
+    littlefs-lib
     pico_cyw43_arch_lwip_threadsafe_background
     hardware_dma
     hardware_pio
