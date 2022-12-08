@@ -17,6 +17,7 @@ good_stop:              ; No delay before returning to start; a little slack is
 .wrap
 
 % c-sdk {
+#include "hardware/clocks.h"
 
 uint16_t rxmap[65536];
 

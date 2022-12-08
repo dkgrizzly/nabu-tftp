@@ -45,4 +45,8 @@ target_link_libraries(nabutftp PUBLIC
     hardware_pio
 )
 
+# enable usb output, disable uart output
+pico_enable_stdio_usb(nabutftp 1)
+pico_enable_stdio_uart(nabutftp 0)
+
 pico_add_extra_outputs(nabutftp)
