@@ -1,2 +1,3 @@
 # CMake build folder
 build/
+*.swp
