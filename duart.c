@@ -26,11 +26,19 @@ uint16_t __time_critical_func(duart_readByteExpected)(uint8_t ExpectedChar, uint
     while(Timeout--) {
         data = uart_rx_program_get(duart_pio, U2_RX_SM);
         if(data < 0x100) {
-            if(data == ExpectedChar) return 0;
-            printf("Unexpected byte %02x while waiting for %02x\r\n", data, ExpectedChar);
+            if(data == ExpectedChar)
+                return 0;
+
+            if(stdio_usb_connected())
+                printf("Unexpected byte %02x while waiting for %02x\r\n", data, ExpectedChar);
+
             return 1;
         }
     }
+
+    if(stdio_usb_connected())
+        printf("Timeout while waiting for %02x\r\n", ExpectedChar);
+
     return 2;
 }
 

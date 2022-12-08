@@ -23,12 +23,14 @@ void adapterInit() {
 
 void channelStatus() {
     if(!channelValid) {
-        printf("Requesting Channel Code\r\n");
+        if(stdio_usb_connected())
+            printf("Requesting Channel Code\r\n");
         duart_sendByte(0x9F); // Request Channel Code
         duart_sendByte(0x10);
         duart_sendByte(0xE1);
     } else {
-        printf("Have Channel Code\r\n");
+        if(stdio_usb_connected())
+            printf("Have Channel Code\r\n");
         duart_sendByte(0x1F); // Have Channel Code
         duart_sendByte(0x10);
         duart_sendByte(0xE1);
@@ -66,7 +68,8 @@ void changeChannel() {
 
     duart_sendByte(0xE4);
 
-    printf("New Channel Code: %04x\r\n", channelWord);
+    if(stdio_usb_connected())
+        printf("New Channel Code: %04x\r\n", channelWord);
 
     channelValid = 1;
 }
@@ -108,7 +111,8 @@ void packetRequest() {
 
     duart_sendByte(0xE4);
 
-    printf("Packet Request: Segment %06x, Packet %02x\r\n", (request >> 8), (request & 0xff));
+    if(stdio_usb_connected())
+        printf("Packet Request: Segment %06x, Packet %02x\r\n", (request >> 8), (request & 0xff));
 
     schedulePacketRequest(request);
 }
@@ -118,53 +122,65 @@ static void __time_critical_func(adapterLoop)() {
         uint16_t data = duart_readByteNonblocking();
         switch(data) {
         default:
-            printf("%02x \r\n", data);
+            if(stdio_usb_connected())
+                printf("%02x \r\n", data);
             break;
         case 0xFFFF:
         case 0xEFEF:
             break;
         case 0x01:
-            printf("01: Channel Status\r\n");
+            if(stdio_usb_connected())
+                printf("01: Channel Status\r\n");
             channelStatus();
             break;
         case 0x05:
-            printf("05: \r\n");
+            if(stdio_usb_connected())
+                printf("05: \r\n");
             duart_sendByte(0xE4);
             break;
         case 0x0F:
-            printf("0F: \r\n");
+            if(stdio_usb_connected())
+                printf("0F: \r\n");
             break;
         case 0x1C:
-            printf("1C: \r\n");
+            if(stdio_usb_connected())
+                printf("1C: \r\n");
             break;
         case 0x1E:
-            printf("1E: \r\n");
+            if(stdio_usb_connected())
+                printf("1E: \r\n");
             duart_sendByte(0x10);
             duart_sendByte(0xE1);
             break;
         case 0x81:
-            printf("81: \r\n");
+            if(stdio_usb_connected())
+                printf("81: \r\n");
             duart_sendByte(0x10);
             duart_sendByte(0x06);
             break;
         case 0x82: // Read Status?
-            printf("82: Get Ready\r\n");
+            if(stdio_usb_connected())
+                printf("82: Get Ready\r\n");
             getReady();
             break;
         case 0x83: // Initialize
-            printf("83: Initialize\r\n");
+            if(stdio_usb_connected())
+                printf("83: Initialize\r\n");
             adapterInit();
             break;
         case 0x84: // Packet Request
-            printf("84: Packet Request\r\n");
+            if(stdio_usb_connected())
+                printf("84: Packet Request\r\n");
             packetRequest();
             break;
         case 0x85: // Change Channel
-            printf("85: Change Channel\r\n");
+            if(stdio_usb_connected())
+                printf("85: Change Channel\r\n");
             changeChannel();
             break;
         case 0x8F:
-            printf("8F: \r\n");
+            if(stdio_usb_connected())
+                printf("8F: \r\n");
             //duart_sendByte(0x10);
             //duart_sendByte(0x06);
             break;
@@ -179,14 +195,16 @@ int main() {
     // Initializes the SYSCLOCK to 113MHz
     duart_init();
 
-    stdio_uart_init_full(uart0, 115200, 12, 13);
+    //stdio_uart_init_full(uart0, 115200, 12, 13);
+    stdio_usb_init();
 
     initializePacketRequestQueue();
     initializePacketPayloadQueue();
 
     wifiInit();
 
-    printf("Pico Ready.\r\n");
+    if(stdio_usb_connected())
+        printf("Pico Ready.\r\n");
 
     adapterLoop();
 }

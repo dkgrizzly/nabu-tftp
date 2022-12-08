@@ -49,19 +49,22 @@ void dequeuePacketPayload() {
         uint8_t *data = PacketBuffer[buffer];
 
         if(size == 0) {
-            printf("\r\n90\r\n");
+            if(stdio_usb_connected())
+                printf("\r\n90\r\n");
             duart_sendByte(0x90);
             duart_sendByte(0x10);
             sleep_ms(10);
             duart_sendByte(0xE1);
             sleep_ms(10);
         } else {
-            printf("\r\n91\r\n");
+            if(stdio_usb_connected())
+                printf("\r\n91\r\n");
             duart_sendByte(0x91);
             duart_readByteExpected(0x10, 0x7FFFFFF);
             duart_readByteExpected(0x06, 0x7FFFFFF);
             for(uint i = 0; i < size; i++) {
-                printf("%02x ", data[i]);
+                if(stdio_usb_connected())
+                    printf("%02x ", data[i]);
                 if(data[i] == 0x10) {
                     duart_sendByte(0x10);
                     busy_wait_us_32(100);
@@ -71,10 +74,11 @@ void dequeuePacketPayload() {
                     duart_sendByte(data[i]);
                     busy_wait_us_32(100);
                 }
-                if((i & 0xf) == 0xf)
+                if(stdio_usb_connected() && ((i & 0xf) == 0xf))
                     printf("\r\n");
             }
-            printf("\r\n10 E1\r\n");
+            if(stdio_usb_connected())
+                printf("\r\n10 E1\r\n");
             duart_sendByte(0x10);
             busy_wait_us_32(100);
             duart_sendByte(0xE1);

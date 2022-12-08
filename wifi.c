@@ -23,7 +23,7 @@ PacketHandle_t PacketHandle[MAXPACKET];
 ip_addr_t tftpserver;
 
 static int scan_result(void *env, const cyw43_ev_scan_result_t *result) {
-    if (result) {
+    if (stdio_usb_connected() && result) {
         printf("ssid: %-32s rssi: %4d chan: %3d mac: %02x:%02x:%02x:%02x:%02x:%02x sec: %u\n",
             result->ssid, result->rssi, result->channel,
             result->bssid[0], result->bssid[1], result->bssid[2], result->bssid[3], result->bssid[4], result->bssid[5],
@@ -82,7 +82,8 @@ static void tftp_error(void* handle, int err, const char* msg, int size) {
     memset(message, 0, sizeof(message));
     MEMCPY(message, msg, LWIP_MIN(sizeof(message)-1, (size_t)size));
 
-    printf("TFTP error: %d (%s)", err, message);
+    if(stdio_usb_connected())
+        printf("TFTP error: %d (%s)", err, message);
 }
 
 void handleRequest(uint32_t request) {
@@ -91,15 +92,18 @@ void handleRequest(uint32_t request) {
     err_t err;
 
     snprintf(filename, sizeof(filename)-1, "/nabu/%08x.pak", request);
-    printf("Submitting TFTP Get for %s:%s\r\n", TFTP_SERVER_IP, filename);
+    if(stdio_usb_connected())
+        printf("Submitting TFTP Get for %s:%s\r\n", TFTP_SERVER_IP, filename);
     f = tftp_open(filename, 0, 1);
     if(f == NULL) {
-        printf("Error allocating a packet buffer.\r\n");
+        if(stdio_usb_connected())
+            printf("Error allocating a packet buffer.\r\n");
     } else {
         err = tftp_get(f, &tftpserver, TFTP_PORT, filename, TFTP_MODE_OCTET);
         tftp_close(f);
         if(err != ERR_OK) {
-            printf("TFTP Get failed\r\n");
+            if(stdio_usb_connected())
+                printf("TFTP Get failed\r\n");
         }
     }
 }
@@ -128,29 +132,35 @@ void wifiInit() {
     err_t err;
 
     if (cyw43_arch_init()) {
-        printf("WiFi Failed to Init.\r\n");
+        if(stdio_usb_connected())
+            printf("WiFi Failed to Init.\r\n");
         return;
     }
 
     cyw43_arch_enable_sta_mode();
 
-    printf("Connecting to WiFi...\n");
+    if(stdio_usb_connected())
+        printf("Connecting to WiFi...\n");
     if (cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 30000)) {
-        printf("WiFi Failed to Connect.\n");
+        if(stdio_usb_connected())
+            printf("WiFi Failed to Connect.\n");
         return;
     } else {
-        printf("WiFi Connected.\n");
+        if(stdio_usb_connected())
+            printf("WiFi Connected.\n");
     }
 
     ret = ipaddr_aton(TFTP_SERVER_IP, &tftpserver);
     if(ret == 0) {
-        printf("Parsing server address '%s' failed.\n", TFTP_SERVER_IP);
+        if(stdio_usb_connected())
+            printf("Parsing server address '%s' failed.\n", TFTP_SERVER_IP);
         return;
     }
 
     err = tftp_init_client(&tftp);
     if(err != ERR_OK) {
-        printf("TFTP Client startup failed.\n");
+        if(stdio_usb_connected())
+            printf("TFTP Client startup failed.\n");
         return;
     }
 
