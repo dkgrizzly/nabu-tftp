@@ -1,0 +1,3 @@
+[submodule "lib/pico-littlefs"]
+	path = lib/pico-littlefs
+	url = https://github.com/lurk101/pico-littlefs
