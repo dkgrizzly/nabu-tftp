@@ -87,27 +87,32 @@ static void tftp_close(void* handle) {
     LWIP_UNUSED_ARG(handle);
 
     if(SegmentNumber == 0) return;
+    
+    if(!handling_request) return;
 
     if(PacketMode) {
         if(!PacketPrologSent) {
+            request_handled = false;
             sendUnauthorized();
         } else {
+            request_handled = true;
             sendPacketEpilog();
         }
+
+        SegmentNumber = 0;
+        PacketNumber = 0;
+        PacketOffset = 0;
     } else {
         if(!SegmentWritePtr) {
+            request_handled = false;
             sendUnauthorized();
         } else {
             printf("Segment is %d bytes.\r\n", SegmentWritePtr);
             PacketizeSegment();
-            handling_request = false;
-            return;
+            request_handled = true;
         }
     }
 
-    SegmentNumber = 0;
-    PacketNumber = 0;
-    PacketOffset = 0;
     handling_request = false;
     PacketPrologSent = false;
 }
@@ -149,6 +154,9 @@ static void tftp_error(void* handle, int err, const char* msg, int size) {
     MEMCPY(message, msg, LWIP_MIN(sizeof(message)-1, (size_t)size));
 
     printf("TFTP error: %d (%s)\r\n", err, message);
+
+    request_handled = false;
+    handling_request = false;
 }
 
 bool handleRequest(uint32_t request) {
@@ -160,6 +168,9 @@ bool handleRequest(uint32_t request) {
         return sendTimePacket();
     }
 
+    request_handled = false;
+    handling_request = true;
+
     if(!PacketMode && (SegmentNumber == (request >> 8))) {
         PacketNumber = request & 0xFF;        
         return PacketizeSegment();
@@ -168,9 +179,6 @@ bool handleRequest(uint32_t request) {
     SegmentNumber = request >> 8;
     SegmentWritePtr = 0;
 
-    request_handled = false;
-    handling_request = true;
-
     // if this is a reqest for the first packet of a segment, try to get the entire segment
     if((request & 0xff) == 0) {
         snprintf(filename, sizeof(filename)-1, "/nabu/%06x.nabu", SegmentNumber);
@@ -178,26 +186,21 @@ bool handleRequest(uint32_t request) {
 
         tftp_segment_open();
         err = tftp_get(dummyhandle, &tftpserver, TFTP_PORT, filename, TFTP_MODE_OCTET);
-        if(err == ERR_OK) {
-            while(handling_request) {
-                sleep_ms(500);
-            }
-            request_handled = true;
+        while(handling_request) {
+            sleep_ms(500);
         }
     }
 
     if(!request_handled) {
+        handling_request = true;
         // .nabu file wasn't found, try looking for pre-packetized files
         snprintf(filename, sizeof(filename)-1, "/nabu/%08x.pak", request);
         printf("Submitting TFTP Get for %s:%s\r\n", tftp_server_ip, filename);
 
         tftp_packet_open();
         err = tftp_get(dummyhandle, &tftpserver, TFTP_PORT, filename, TFTP_MODE_OCTET);
-        if(err == ERR_OK) {
-            while(handling_request) {
-                sleep_ms(500);
-            }
-            request_handled = true;
+        while(handling_request) {
+            sleep_ms(500);
         }
     }
 
