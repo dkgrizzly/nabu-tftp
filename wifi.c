@@ -155,6 +155,11 @@ bool handleRequest(uint32_t request) {
     char filename[64];
     err_t err;
 
+    if(request == 0x7fffff00) {
+        printf("Sending time packet.\r\n");
+        return sendTimePacket();
+    }
+
     if(!PacketMode && (SegmentNumber == (request >> 8))) {
         PacketNumber = request & 0xFF;        
         return PacketizeSegment();
@@ -162,11 +167,6 @@ bool handleRequest(uint32_t request) {
 
     SegmentNumber = request >> 8;
     SegmentWritePtr = 0;
-
-    if(SegmentNumber == 0x7fffff) {
-        printf("Sending time packet.\r\n");
-        return sendTimePacket();
-    }
 
     request_handled = false;
     handling_request = true;

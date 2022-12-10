@@ -64,7 +64,6 @@ bool sendPacketizedData(uint8_t *buf, uint16_t sz) {
 #define TIMEPACKETSIZE (16+9+2)
 bool sendTimePacket() {
     uint16_t crc = 0xffff;
-    uint8_t data[TIMEPACKETSIZE];
 
     PacketBuffer[0] = 0x7F;
     PacketBuffer[1] = 0xFF;
