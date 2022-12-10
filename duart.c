@@ -79,22 +79,18 @@ void __time_critical_func(duart_sendRawByte)(uint8_t ch) {
     switch(duart_mode) {
     case 0:
         uart_putc_raw(uart0, ch);
-        busy_wait_us_32(100);
         return;
 
     case 1:
         uart_putc_raw(uart1, ch);
-        busy_wait_us_32(100);
         return;
 
     case 2:
         duart_tx_program_put(duart_pio, U2_TX_SM, ch);
-        busy_wait_us_32(100);
         return;
 
     case 3:
         suart_tx_program_put(duart_pio, U2_TX_SM, ch);
-        busy_wait_us_32(100);
         return;
     }
 }
@@ -149,7 +145,8 @@ void duart_init(int hardwaremode) {
             gpio_set_function(29, GPIO_FUNC_UART);
             break;
         }
-        uart_init(uart0, CONFIG_SERIAL_BAUD);
+        printf("UART0 Baudrate: %d\r\n", uart_init(uart0, CONFIG_SERIAL_BAUD));
+        uart_set_format(uart0, 8, 2, UART_PARITY_NONE);
         return;
 
     case 1:
@@ -172,7 +169,8 @@ void duart_init(int hardwaremode) {
             gpio_set_function(25, GPIO_FUNC_UART);
             break;
         }
-        uart_init(uart1, CONFIG_SERIAL_BAUD);
+        printf("UART1 Baudrate: %d\r\n", uart_init(uart1, CONFIG_SERIAL_BAUD));
+        uart_set_format(uart1, 8, 2, UART_PARITY_NONE);
         return;
 
     case 2:

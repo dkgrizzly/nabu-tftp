@@ -21,7 +21,7 @@ good_stop:              ; No delay before returning to start; a little slack is
 
 uint16_t rxmap[65536];
 
-static inline void __time_critical_func(duart_rx_program_init)(PIO pio, uint sm, uint offset, uint rxbase, uint baud) {
+static inline int __time_critical_func(duart_rx_program_init)(PIO pio, uint sm, uint offset, uint rxbase, uint baud) {
     uint32_t i;
 
     pio_sm_set_consecutive_pindirs(pio, sm, rxbase, 2, false);
@@ -64,6 +64,8 @@ static inline void __time_critical_func(duart_rx_program_init)(PIO pio, uint sm,
 
     pio_sm_init(pio, sm, offset, &c);
     pio_sm_set_enabled(pio, sm, true);
+
+    return clock_get_hz(clk_sys) / div;
 }
 
 static inline uint16_t __time_critical_func(duart_rx_program_get)(PIO pio, uint sm) {

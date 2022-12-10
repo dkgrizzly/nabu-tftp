@@ -4,7 +4,9 @@
 ; SET & OUT pins should be set to TX
     set pindirs, 1
 .wrap_target
-    pull       side 1 [7]  ; Assert stop bit, or stall with line in idle state
+    nop        side 1 [7]  ; Ensure 3 stop bits
+    nop               [7]  ; 
+    pull              [7]  ; Stall in idle state after 3 stop bits
     set x, 7   side 0 [7]  ; Preload bit counter, assert start bit for 8 clocks
 bitloop:                   ; This loop will run 8 times (8n1 UART)
     out pins, 1            ; Shift 1 bit from OSR to the first OUT pin
@@ -14,7 +16,7 @@ bitloop:                   ; This loop will run 8 times (8n1 UART)
 % c-sdk {
 #include "hardware/clocks.h"
 
-static inline void __time_critical_func(suart_tx_program_init)(PIO pio, uint sm, uint offset, uint txbase, uint baud) {
+static inline int __time_critical_func(suart_tx_program_init)(PIO pio, uint sm, uint offset, uint txbase, uint baud) {
     pio_sm_claim(pio, sm);
 
     pio_sm_set_pins_with_mask(pio, sm, 1u << txbase, 1u << txbase);
@@ -23,7 +25,7 @@ static inline void __time_critical_func(suart_tx_program_init)(PIO pio, uint sm,
 
     pio_sm_config c = suart_tx_program_get_default_config(offset);
 
-    sm_config_set_out_shift(&c, true, false, 32);
+    sm_config_set_out_shift(&c, true, false, 16);
 
     sm_config_set_set_pins(&c, txbase, 1);
     sm_config_set_out_pins(&c, txbase, 1);
@@ -36,6 +38,8 @@ static inline void __time_critical_func(suart_tx_program_init)(PIO pio, uint sm,
 
     pio_sm_init(pio, sm, offset, &c);
     pio_sm_set_enabled(pio, sm, true);
+
+    return clock_get_hz(clk_sys) / div;
 }
 
 static inline void __time_critical_func(suart_tx_program_put)(PIO pio, uint sm, char c) {

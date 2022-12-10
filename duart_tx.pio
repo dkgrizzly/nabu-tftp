@@ -12,7 +12,7 @@
 
 uint32_t txtab[256];
 
-static inline void __time_critical_func(duart_tx_program_init)(PIO pio, uint sm, uint offset, uint txbase, uint baud) {
+static inline int __time_critical_func(duart_tx_program_init)(PIO pio, uint sm, uint offset, uint txbase, uint baud) {
     pio_sm_claim(pio, sm);
 
     pio_sm_set_pins_with_mask(pio, sm, 3u << txbase, 3u << txbase);
@@ -22,7 +22,7 @@ static inline void __time_critical_func(duart_tx_program_init)(PIO pio, uint sm,
 
     pio_sm_config c = duart_tx_program_get_default_config(offset);
 
-    sm_config_set_out_shift(&c, true, true, 32);
+    sm_config_set_out_shift(&c, true, true, 24);
 
     sm_config_set_set_pins(&c, txbase, 2);
     sm_config_set_out_pins(&c, txbase, 2);
@@ -46,6 +46,8 @@ static inline void __time_critical_func(duart_tx_program_init)(PIO pio, uint sm,
 
     pio_sm_init(pio, sm, offset, &c);
     pio_sm_set_enabled(pio, sm, true);
+
+    return clock_get_hz(clk_sys) / div;
 }
 
 static inline void __time_critical_func(duart_tx_program_put)(PIO pio, uint sm, char c) {
