@@ -5,6 +5,8 @@
 int main(int argc, char **argv) {
     uint8_t header[128];
     uint8_t entry[128];
+    int extra = 0;
+    uint16_t entries;
 
     fread(header, 1, 1, stdin);
 
@@ -12,6 +14,8 @@ int main(int argc, char **argv) {
         fprintf(stderr, "ERROR: Segment header is too short\r\n");
         return 0;
     }
+
+    extra = header[0] - 0x0e;
 
     fread(header+1, 1, header[0]-1, stdin);
 
@@ -28,13 +32,14 @@ int main(int argc, char **argv) {
 #endif
 
     printf("Directory Name: ");
-    fwrite(header+8, 1, header[7], stdout);
-    printf("\r\nCode-to-Load: %02x%02x%02x\r\n", header[4], header[5], header[6]);
-    printf("Directory Entries: %d\r\n\r\n", header[3]);
+    fwrite(header+8+extra, 1, header[7+extra], stdout);
+    printf("\r\nCode-to-Load: %02x%02x%02x\r\n", header[4+extra], header[5+extra], header[6+extra]);
+    entries = extra ? ((header[4] << 8)|header[3]) : header[3];
+    printf("Directory Entries: %d\r\n\r\n", entries);
 
     printf(" Name                Type  Owner  Tier      Segment\r\n");
     printf("----------------------------------------------------\r\n");
-    for(int i = 0; i < header[3]; i++) {
+    for(int i = 0; i < entries; i++) {
         fread(entry, 1, header[2], stdin);
         printf(" ");
         fwrite(entry+9, 1, 18, stdout);
