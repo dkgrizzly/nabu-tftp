@@ -1,7 +1,7 @@
-.program uart_tx
+.program duart_tx
 ; An 8n1 UART transmit program.
 ; SET & OUT pins should be set to TX+/TX-
-    set PINDIRS, 0b01
+    set PINS, 0b10
     set PINDIRS, 0b11
 .wrap_target
     out PINS,    2     [7] ; Shift 2 bits from OSR to the OUT pins, delay 7 cycles
@@ -12,7 +12,7 @@
 
 uint32_t txtab[256];
 
-static inline void __time_critical_func(uart_tx_program_init)(PIO pio, uint sm, uint offset, uint txbase, uint baud) {
+static inline void __time_critical_func(duart_tx_program_init)(PIO pio, uint sm, uint offset, uint txbase, uint baud) {
     pio_sm_claim(pio, sm);
 
     pio_sm_set_pins_with_mask(pio, sm, 3u << txbase, 3u << txbase);
@@ -20,7 +20,7 @@ static inline void __time_critical_func(uart_tx_program_init)(PIO pio, uint sm, 
     pio_gpio_init(pio, txbase);
     pio_gpio_init(pio, txbase+1);
 
-    pio_sm_config c = uart_tx_program_get_default_config(offset);
+    pio_sm_config c = duart_tx_program_get_default_config(offset);
 
     sm_config_set_out_shift(&c, true, true, 32);
 
@@ -48,13 +48,13 @@ static inline void __time_critical_func(uart_tx_program_init)(PIO pio, uint sm, 
     pio_sm_set_enabled(pio, sm, true);
 }
 
-static inline void __time_critical_func(uart_tx_program_put)(PIO pio, uint sm, char c) {
+static inline void __time_critical_func(duart_tx_program_put)(PIO pio, uint sm, char c) {
     pio_sm_put_blocking(pio, sm, txtab[(uint8_t)c]);
 }
 
-static inline void __time_critical_func(uart_tx_program_puts)(PIO pio, uint sm, const char *s) {
+static inline void __time_critical_func(duart_tx_program_puts)(PIO pio, uint sm, const char *s) {
     while (*s)
-        uart_tx_program_put(pio, sm, *s++);
+        duart_tx_program_put(pio, sm, *s++);
 }
 
 %}

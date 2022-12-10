@@ -1,4 +1,4 @@
-.program uart_rx
+.program duart_rx
 .wrap_target
 start:
     wait 0 pin 0        ; Stall until start bit is asserted
@@ -21,7 +21,7 @@ good_stop:              ; No delay before returning to start; a little slack is
 
 uint16_t rxmap[65536];
 
-static inline void __time_critical_func(uart_rx_program_init)(PIO pio, uint sm, uint offset, uint rxbase, uint baud) {
+static inline void __time_critical_func(duart_rx_program_init)(PIO pio, uint sm, uint offset, uint rxbase, uint baud) {
     uint32_t i;
 
     pio_sm_set_consecutive_pindirs(pio, sm, rxbase, 2, false);
@@ -30,7 +30,7 @@ static inline void __time_critical_func(uart_rx_program_init)(PIO pio, uint sm, 
     gpio_pull_up(rxbase);
     gpio_pull_down(rxbase+1);
 
-    pio_sm_config c = uart_rx_program_get_default_config(offset);
+    pio_sm_config c = duart_rx_program_get_default_config(offset);
     sm_config_set_in_pins(&c, rxbase); // for WAIT, IN
     sm_config_set_jmp_pin(&c, rxbase); // for JMP
 
@@ -66,7 +66,7 @@ static inline void __time_critical_func(uart_rx_program_init)(PIO pio, uint sm, 
     pio_sm_set_enabled(pio, sm, true);
 }
 
-static inline uint16_t __time_critical_func(uart_rx_program_get)(PIO pio, uint sm) {
+static inline uint16_t __time_critical_func(duart_rx_program_get)(PIO pio, uint sm) {
     if (pio_sm_is_rx_fifo_empty(pio, sm))
         return 0xFFFF;
 

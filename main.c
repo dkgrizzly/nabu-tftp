@@ -3,9 +3,8 @@
 #include <pico/cyw43_arch.h>
 #include <pico/util/queue.h>
 #include <pico/bootrom.h>
+#include <hardware/watchdog.h>
 #include <hardware/pio.h>
-#include "uart_tx.pio.h"
-#include "uart_rx.pio.h"
 #include "config.h"
 #include "packet.h"
 #include "duart.h"
@@ -14,39 +13,39 @@
 
 uint16_t channelWord = 0;
 int channelValid = 1;
+uint32_t hardwaremode = 0;
+bool usb_connected = false;
 
 void adapterInit() {
-    duart_sendByte(0x10);
-    duart_sendByte(0x06);
-    duart_sendByte(0xE4);
+    duart_sendRawByte(0x10);
+    duart_sendRawByte(0x06);
+    duart_sendRawByte(0xE4);
 }
 
 void channelStatus() {
     if(!channelValid) {
-        if(stdio_usb_connected())
-            printf("Requesting Channel Code\r\n");
-        duart_sendByte(0x9F); // Request Channel Code
-        duart_sendByte(0x10);
-        duart_sendByte(0xE1);
+        printf("Requesting Channel Code\r\n");
+        duart_sendRawByte(0x9F); // Request Channel Code
+        duart_sendRawByte(0x10);
+        duart_sendRawByte(0xE1);
     } else {
-        if(stdio_usb_connected())
-            printf("Have Channel Code\r\n");
-        duart_sendByte(0x1F); // Have Channel Code
-        duart_sendByte(0x10);
-        duart_sendByte(0xE1);
+        printf("Have Channel Code\r\n");
+        duart_sendRawByte(0x1F); // Have Channel Code
+        duart_sendRawByte(0x10);
+        duart_sendRawByte(0xE1);
     }
 }
 
 void getReady() {
-    duart_sendByte(0x10);
-    duart_sendByte(0x06);
+    duart_sendRawByte(0x10);
+    duart_sendRawByte(0x06);
 }
 
 void changeChannel() {
     uint16_t data;
 
-    duart_sendByte(0x10);
-    duart_sendByte(0x06);
+    duart_sendRawByte(0x10);
+    duart_sendRawByte(0x06);
 
     data = duart_readByteTimeout(0x7FFFFFFF);
     if(data < 0x100) {
@@ -66,10 +65,9 @@ void changeChannel() {
         return;
     }
 
-    duart_sendByte(0xE4);
+    duart_sendRawByte(0xE4);
 
-    if(stdio_usb_connected())
-        printf("New Channel Code: %04x\r\n", channelWord);
+    printf("New Channel Code: %04x\r\n", channelWord);
 
     channelValid = 1;
 }
@@ -78,8 +76,8 @@ void packetRequest() {
     uint32_t request;
     uint16_t data;
 
-    duart_sendByte(0x10);
-    duart_sendByte(0x06);
+    duart_sendRawByte(0x10);
+    duart_sendRawByte(0x06);
 
     data = duart_readByteTimeout(0x7FFFFFFF);
     if(data < 0x100) {
@@ -109,123 +107,163 @@ void packetRequest() {
         return;
     }
 
-    duart_sendByte(0xE4);
+    duart_sendRawByte(0xE4);
 
-    if(stdio_usb_connected())
-        printf("Packet Request: Segment %06x, Packet %02x\r\n", (request >> 8), (request & 0xff));
+    printf("Packet Request: Segment %06x, Packet %02x\r\n", (request >> 8), (request & 0xff));
 
-    schedulePacketRequest(request);
+    handleRequest(request);
+}
+
+static void pico_reboot() {
+    watchdog_reboot(0, 0, 0);
+	while (1) {
+		tight_loop_contents();
+		asm("");
+	}
+}
+static void displayPrompt() {
+    printf("\r\n>>>");
 }
 
 static void __time_critical_func(adapterLoop)() {
     for(;;) {
+        if(!usb_connected && stdio_usb_connected()) {
+            usb_connected = true;
+            printf("NABU TFTP Gateway Ready.\r\n");
+            displayPrompt();
+        } else if(usb_connected && !stdio_usb_connected()) {
+            usb_connected = false;
+        }
+        int c=getchar_timeout_us(0);
+        if(c != PICO_ERROR_TIMEOUT) {
+            switch(c) {
+                case 'C':
+                case 'c':
+                    pico_remove("config");
+                case 'R':
+                case 'r':
+                    pico_reboot();
+                    break;
+                case 'X':
+                case 'x':
+                    duart_sendRawByte(0x10);
+                    duart_sendRawByte(0xE4);
+                    displayPrompt();
+                    break;
+                case '?':
+                    printf("\r\n\r\n");
+                    printf("NABU TFTP Gateway\r\n");
+                    printf("    r    Reboot\r\n");
+                    printf("    c    Reconfigure\r\n");
+                    printf("    x    Transmit test\r\n");
+                    printf("    ?    Help\r\n");
+                    printf("\r\n");
+                default:
+                    displayPrompt();
+                    break;
+            }
+        }
+        
         uint16_t data = duart_readByteNonblocking();
         switch(data) {
         default:
-            if(stdio_usb_connected())
-                printf("%02x \r\n", data);
+            printf("\r%02X \r\n", data);
+            displayPrompt();
             break;
         case 0xFFFF:
         case 0xEFEF:
             break;
         case 0x01:
-            if(stdio_usb_connected())
-                printf("01: Channel Status\r\n");
+            printf("\r01: Channel Status\r\n");
             channelStatus();
             break;
         case 0x05:
-            if(stdio_usb_connected())
-                printf("05: \r\n");
-            duart_sendByte(0xE4);
+            printf("\r05: \r\n");
+            duart_sendRawByte(0xE4);
+            displayPrompt();
             break;
         case 0x0F:
-            if(stdio_usb_connected())
-                printf("0F: \r\n");
+            printf("\r0F: \r\n");
+            displayPrompt();
             break;
         case 0x1C:
-            if(stdio_usb_connected())
-                printf("1C: \r\n");
+            printf("\r1C: \r\n");
+            displayPrompt();
             break;
         case 0x1E:
-            if(stdio_usb_connected())
-                printf("1E: \r\n");
-            duart_sendByte(0x10);
-            duart_sendByte(0xE1);
+            printf("\r1E: \r\n");
+            duart_sendRawByte(0x10);
+            duart_sendRawByte(0xE1);
+            displayPrompt();
             break;
         case 0x81:
-            if(stdio_usb_connected())
-                printf("81: \r\n");
-            duart_sendByte(0x10);
-            duart_sendByte(0x06);
+            printf("\r81: \r\n");
+            duart_sendRawByte(0x10);
+            duart_sendRawByte(0x06);
+            displayPrompt();
             break;
         case 0x82: // Read Status?
-            if(stdio_usb_connected())
-                printf("82: Get Ready\r\n");
+            printf("\r82: Get Ready\r\n");
             getReady();
+            displayPrompt();
             break;
         case 0x83: // Initialize
-            if(stdio_usb_connected())
-                printf("83: Initialize\r\n");
+            printf("\r83: Initialize\r\n");
             adapterInit();
+            displayPrompt();
             break;
         case 0x84: // Packet Request
-            if(stdio_usb_connected())
-                printf("84: Packet Request\r\n");
+            printf("\r84: Packet Request\r\n");
             packetRequest();
+            displayPrompt();
             break;
         case 0x85: // Change Channel
-            if(stdio_usb_connected())
-                printf("85: Change Channel\r\n");
+            printf("\r85: Change Channel\r\n");
             changeChannel();
+            displayPrompt();
             break;
         case 0x8F:
-            if(stdio_usb_connected())
-                printf("8F: \r\n");
-            //duart_sendByte(0x10);
-            //duart_sendByte(0x06);
+            printf("\r8F: \r\n");
+            displayPrompt();
             break;
         }
-
-        // Check for queued packets ready to send
-        dequeuePacketPayload();
     }
 }
 
 int main() {
-    // Initializes the SYSCLOCK to 113MHz
-    duart_init();
+    // Adjust system clock for better dividing into other clocks
+    set_sys_clock_khz(CONFIG_SYSCLOCK*1000, true);
 
-    //stdio_uart_init_full(uart0, 115200, 12, 13);
     stdio_usb_init();
 
     // Try mounting the LittleFS, or format if it isn't there.
     if(pico_mount(0) != LFS_ERR_OK) {
         if(pico_mount(1) != LFS_ERR_OK) {
-            printf("Unable to mount or format LittleFS.\r\n");
+            printf("ERROR: Unable to mount or format LittleFS.\r\n");
         } else {
-            printf("Not configured.\r\n");
+            printf("LittleFS formatted.\r\n");
         }
     } else {
-        int file = pico_open("config", LFS_O_RDONLY);
-        if(file < 0) {
-            printf("Not configured.\r\n");
-        } else {
-            pico_read(file, &wifi_ssid, sizeof(wifi_ssid));
-            pico_read(file, &wifi_psk, sizeof(wifi_psk));
-            pico_read(file, &wifi_auth, sizeof(wifi_auth));
-            pico_read(file, &tftp_server_ip, sizeof(tftp_server_ip));
-            wifi_configured = 1;
-            pico_close(file);
-        }
+        readConfig();
     }
-
-    initializePacketRequestQueue();
-    initializePacketPayloadQueue();
 
     wifiInit();
 
-    if(stdio_usb_connected())
-        printf("Pico Ready.\r\n");
+#if 0    
+    if(!stdio_usb_connected()) {
+        sleep_ms(5000);
+    }
+#endif
+
+    if(!configured) {
+        configWizard();
+    } else {
+        wifiConnect();
+    }
+
+    tftpStartup();
+
+    duart_init(hardwaremode);
 
     adapterLoop();
 }

@@ -1,0 +1,50 @@
+.program suart_tx
+.side_set 1 opt
+; An 8n1 UART transmit program.
+; SET & OUT pins should be set to TX
+    set pindirs, 1
+.wrap_target
+    pull       side 1 [7]  ; Assert stop bit, or stall with line in idle state
+    set x, 7   side 0 [7]  ; Preload bit counter, assert start bit for 8 clocks
+bitloop:                   ; This loop will run 8 times (8n1 UART)
+    out pins, 1            ; Shift 1 bit from OSR to the first OUT pin
+    jmp x-- bitloop   [6]  ; Each loop iteration is 8 cycles.
+.wrap
+
+% c-sdk {
+#include "hardware/clocks.h"
+
+static inline void __time_critical_func(suart_tx_program_init)(PIO pio, uint sm, uint offset, uint txbase, uint baud) {
+    pio_sm_claim(pio, sm);
+
+    pio_sm_set_pins_with_mask(pio, sm, 1u << txbase, 1u << txbase);
+    pio_sm_set_pindirs_with_mask(pio, sm, 1u << txbase, 1u << txbase);
+    pio_gpio_init(pio, txbase);
+
+    pio_sm_config c = suart_tx_program_get_default_config(offset);
+
+    sm_config_set_out_shift(&c, true, false, 32);
+
+    sm_config_set_set_pins(&c, txbase, 1);
+    sm_config_set_out_pins(&c, txbase, 1);
+    sm_config_set_sideset_pins(&c, txbase);
+
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);
+
+    float div = (float)clock_get_hz(clk_sys) / (8 * baud);
+    sm_config_set_clkdiv(&c, div);
+
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+
+static inline void __time_critical_func(suart_tx_program_put)(PIO pio, uint sm, char c) {
+    pio_sm_put_blocking(pio, sm, (((uint8_t)c)<<1) | 1);
+}
+
+static inline void __time_critical_func(suart_tx_program_puts)(PIO pio, uint sm, const char *s) {
+    while (*s)
+        suart_tx_program_put(pio, sm, *s++);
+}
+
+%}

@@ -1,40 +1,23 @@
+#define MAXSEGMENTSIZE 65536
+#define MAXPACKETSIZE 1024
+#define MAXPAYLOAD 991
 
-#define MAXREQUEST 4
-#define MAXPACKET 8
-#define PACKETSIZE 1024
+extern uint8_t SegmentBuffer[MAXSEGMENTSIZE];
+extern uint16_t SegmentWritePtr;
 
-typedef struct PacketHeader_s {
-    uint8_t segment[3];
-    uint8_t id;
-    uint8_t owner;
-    uint8_t tier[4];
-    uint8_t mystery[2];
-    uint8_t type;
-    uint8_t number[2];
-    uint8_t offset[2];
-} PacketHeader_t;
+extern uint8_t PacketBuffer[MAXPACKETSIZE];
+extern int PacketMode;
 
-typedef struct PacketPointer_s {
-    uint16_t size;
-    uint16_t buffer;
-} PacketPointer_t;
+extern bool PacketPrologSent;
+extern uint32_t SegmentNumber;
+extern uint16_t PacketWritePtr;
+extern uint16_t PacketNumber;
+extern uint16_t PacketOffset;
 
-typedef struct TimePacket_s {
-    uint8_t data[9];
-} TimePacket_t;
-
-extern uint8_t PacketBuffer[MAXPACKET][PACKETSIZE];
-extern uint8_t PacketState[MAXPACKET];
-
-extern void initializePacketRequestQueue();
-extern void schedulePacketRequest(uint32_t request);
-extern int dequeuePacketRequest(uint32_t *request);
-
-extern void initializePacketPayloadQueue();
-extern void schedulePacketPayload(uint16_t buffer, uint16_t size);
-extern void dequeuePacketPayload();
-
-extern uint16_t newPacketBuffer();
-extern void assemblePacket(uint16_t size, PacketHeader_t *header, void *data);
-extern void newTimePacket();
+extern bool sendTimePacket();
+extern bool PacketizeSegment();
+extern bool sendPacketizedData(uint8_t *buf, uint16_t sz);
+extern bool sendUnauthorized();
+extern bool sendPacketProlog();
+extern bool sendPacketEpilog();
 

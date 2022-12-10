@@ -16,10 +16,16 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DPICO_USE_MALLOC_MUTEX=1")
 add_executable(nabutftp)
 
 pico_generate_pio_header(nabutftp
-    ${CMAKE_CURRENT_SOURCE_DIR}/uart_tx.pio)
+    ${CMAKE_CURRENT_SOURCE_DIR}/duart_tx.pio)
 
 pico_generate_pio_header(nabutftp
-    ${CMAKE_CURRENT_SOURCE_DIR}/uart_rx.pio)
+    ${CMAKE_CURRENT_SOURCE_DIR}/duart_rx.pio)
+
+pico_generate_pio_header(nabutftp
+    ${CMAKE_CURRENT_SOURCE_DIR}/suart_tx.pio)
+
+pico_generate_pio_header(nabutftp
+    ${CMAKE_CURRENT_SOURCE_DIR}/suart_rx.pio)
 
 target_compile_definitions(nabutftp PRIVATE
             WIFI_SSID=\"${WIFI_SSID}\"
@@ -30,6 +36,7 @@ target_compile_definitions(nabutftp PRIVATE
 target_sources(nabutftp PUBLIC
     ota.o
     main.c
+    config.c
     duart.c
     packet.c
     wifi.c

@@ -1,162 +1,204 @@
 #include <stdio.h>
 #include <string.h>
 #include <pico/stdlib.h>
-#include <pico/util/queue.h>
 #include "config.h"
 #include "packet.h"
 #include "duart.h"
+#include "crctab.h"
 
-uint8_t PacketBuffer[MAXPACKET][PACKETSIZE];
-uint8_t PacketState[MAXPACKET];
+uint8_t SegmentBuffer[MAXSEGMENTSIZE];
+uint16_t SegmentWritePtr;
 
-queue_t PacketRequestQueue;
-queue_t PacketPayloadQueue;
+uint8_t PacketBuffer[MAXPACKETSIZE];
+uint16_t PacketWritePtr;
 
-void initializePacketRequestQueue() {
-    queue_init(&PacketRequestQueue, MAXREQUEST, 4);
+int PacketMode;
+
+bool PacketPrologSent = false;
+uint32_t SegmentNumber;
+uint16_t PacketNumber;
+uint16_t PacketOffset;
+
+uint16_t min16(uint16_t a, uint16_t b) {
+    return (a < b) ? a : b;
 }
 
-void schedulePacketRequest(uint32_t request) {
-    if(request == 0x7FFFFF00) {
-        newTimePacket();
-    } else {
-        queue_try_add(&PacketRequestQueue, &request);
+uint16_t crc_update(uint16_t de, uint8_t a) {
+    uint8_t bc;
+
+    bc = (de >> 8) ^ a;
+
+    de <<= 8;
+    de ^= crc_table[bc];
+
+    return de;
+}
+
+bool sendPacketProlog() {
+    duart_sendRawByte(0x91);
+    if(duart_readByteExpected(0x10, 0x7FFFFFF)) return false;
+    if(duart_readByteExpected(0x06, 0x7FFFFFF)) return false;
+    return true;
+}
+
+bool sendUnauthorized() {
+    duart_sendRawByte(0x90);
+    if(duart_readByteExpected(0x10, 0x7FFFFFF)) return false;
+    if(duart_readByteExpected(0x06, 0x7FFFFFF)) return false;
+    return true;
+}
+
+bool sendPacketEpilog() {
+    duart_sendRawByte(0x10);
+    duart_sendRawByte(0xE1);
+    return true;
+}
+
+bool sendPacketizedData(uint8_t *buf, uint16_t sz) {
+    if(!sendPacketProlog()) return false;
+    duart_sendBytes(buf, sz);
+    if(!sendPacketEpilog()) return false;
+    return true;
+}
+
+#define TIMEPACKETSIZE (16+9+2)
+bool sendTimePacket() {
+    uint16_t crc = 0xffff;
+    uint8_t data[TIMEPACKETSIZE];
+
+    PacketBuffer[0] = 0x7F;
+    PacketBuffer[1] = 0xFF;
+    PacketBuffer[2] = 0xFF;
+    PacketBuffer[3] = 0x00;
+    PacketBuffer[4] = 0x00;
+    PacketBuffer[5] = 0x7F;
+    PacketBuffer[6] = 0xFF;
+    PacketBuffer[7] = 0xFF;
+    PacketBuffer[8] = 0xFF;
+    PacketBuffer[9] = 0x7F;
+    PacketBuffer[10] = 0x80;
+    PacketBuffer[11] = 0x30;
+    PacketBuffer[12] = 0x00;
+    PacketBuffer[13] = 0x00;
+    PacketBuffer[14] = 0x00;
+    PacketBuffer[15] = 0x00;
+
+    PacketBuffer[16] = 0x02;
+    PacketBuffer[17] = 0x02;
+    PacketBuffer[18] = 0x02;
+    PacketBuffer[19] = 0x54;
+    PacketBuffer[20] = 0x01;
+    PacketBuffer[21] = 0x01;
+    PacketBuffer[22] = 0x00;
+    PacketBuffer[23] = 0x00;
+    PacketBuffer[24] = 0x00;
+
+    for(int i = 0; i < (TIMEPACKETSIZE-2); i++) {
+        crc = crc_update(crc, PacketBuffer[i]);
     }
+
+    PacketBuffer[25] = ((crc >> 8) & 0xff) ^ 0xff;
+    PacketBuffer[26] = ((crc >> 0) & 0xff) ^ 0xff;
+
+    printf("Sending Time Packet\r\n");
+
+    return sendPacketizedData(PacketBuffer, TIMEPACKETSIZE);
 }
 
-int dequeuePacketRequest(uint32_t *request) {
-    return queue_try_remove(&PacketRequestQueue, request);
-}
+bool ExpectPacketRequest(uint32_t ExpectedSegment, uint8_t ExpectedPacket) {
+    uint32_t request;
+    uint16_t data;
+    bool failed = false;
 
-void initializePacketPayloadQueue() {
-    queue_init(&PacketPayloadQueue, MAXPACKET, sizeof(PacketPointer_t));
-}
+    if(duart_readByteExpected(0x84, 0x7FFFFFF)) return false;
 
-void schedulePacketPayload(uint16_t buffer, uint16_t size) {
-    PacketPointer_t PacketPointer;
+    duart_sendRawByte(0x10);
+    duart_sendRawByte(0x06);
 
-    PacketPointer.size = size;
-    PacketPointer.buffer = buffer;
+    failed |= (duart_readByteExpected(ExpectedPacket, 0x7FFFFFF)!=0);
+    failed |= (duart_readByteExpected(((ExpectedSegment >> 0) & 0xFF), 0x7FFFFFF)!=0);
+    failed |= (duart_readByteExpected(((ExpectedSegment >> 8) & 0xFF), 0x7FFFFFF)!=0);
+    failed |= (duart_readByteExpected(((ExpectedSegment >> 16) & 0xFF), 0x7FFFFFF)!=0);
 
-    queue_try_add(&PacketPayloadQueue, &PacketPointer);
-}
+    duart_sendRawByte(0xE4);
 
-void dequeuePacketPayload() {
-    PacketPointer_t PacketPointer;
-    if(queue_try_remove(&PacketPayloadQueue, &PacketPointer)) {
-        uint16_t size = PacketPointer.size;
-        uint16_t buffer = PacketPointer.buffer;
-        uint8_t *data = PacketBuffer[buffer];
-
-        if(size == 0) {
-            if(stdio_usb_connected())
-                printf("\r\n90\r\n");
-            duart_sendByte(0x90);
-            duart_sendByte(0x10);
-            sleep_ms(10);
-            duart_sendByte(0xE1);
-            sleep_ms(10);
-        } else {
-            if(stdio_usb_connected())
-                printf("\r\n91\r\n");
-            duart_sendByte(0x91);
-            duart_readByteExpected(0x10, 0x7FFFFFF);
-            duart_readByteExpected(0x06, 0x7FFFFFF);
-            for(uint i = 0; i < size; i++) {
-                if(stdio_usb_connected())
-                    printf("%02x ", data[i]);
-                if(data[i] == 0x10) {
-                    duart_sendByte(0x10);
-                    busy_wait_us_32(100);
-                    duart_sendByte(0x10);
-                    busy_wait_us_32(100);
-                } else {
-                    duart_sendByte(data[i]);
-                    busy_wait_us_32(100);
-                }
-                if(stdio_usb_connected() && ((i & 0xf) == 0xf))
-                    printf("\r\n");
-            }
-            if(stdio_usb_connected())
-                printf("\r\n10 E1\r\n");
-            duart_sendByte(0x10);
-            busy_wait_us_32(100);
-            duart_sendByte(0xE1);
-            busy_wait_us_32(100);
-        }
-        PacketState[buffer] = 0;
+    if(failed) {
+        duart_sendRawByte(0xE4);
+        sendUnauthorized();
     }
+
+    return !failed;
 }
 
-uint16_t newPacketBuffer() {
-    uint16_t buffer;
+bool PacketizeSegment() {
+    uint8_t *buf = SegmentBuffer;
+    uint16_t sz = SegmentWritePtr;
+    
+    uint16_t PayloadSize;
 
-    for(buffer = 0; buffer < MAXPACKET; buffer++) {
-        if(PacketState[buffer] == 0) break;
+    bool LastPacket = false;
+    uint16_t crc = 0xffff;
+    uint16_t data;
+    uint32_t request;
+    int i;
+
+    if((SegmentNumber == 0) || (SegmentNumber == -1)) {
+        printf("Not sending an invalid segment\r\n");
+        return false;
     }
-    if(buffer >= MAXPACKET) return 0xffff;
-    PacketState[buffer] = 1;
 
-    return buffer;
+    if(sz == 0) {
+        printf("Not sending an empty segment\r\n");
+        return false;
+    }
+
+    PacketOffset = PacketNumber * MAXPAYLOAD;
+    buf += PacketOffset;
+    sz -= PacketOffset;
+
+    if(sz == 0) {
+        printf("Not sending an empty segment\r\n");
+        return false;
+    }
+
+    PacketWritePtr = 0;
+    PayloadSize = min16(MAXPAYLOAD, sz);
+    LastPacket = (PayloadSize == sz);
+    sz -= PayloadSize;
+
+    PacketBuffer[PacketWritePtr++] = (SegmentNumber >> 16) & 0xff; // Segment MSB
+    PacketBuffer[PacketWritePtr++] = (SegmentNumber >>  8) & 0xff; //
+    PacketBuffer[PacketWritePtr++] = (SegmentNumber >>  0) & 0xff; // Segment LSB
+    PacketBuffer[PacketWritePtr++] = PacketNumber & 0xff;          // Packet Number LSB
+    PacketBuffer[PacketWritePtr++] = 0x01;                         // Owner
+    PacketBuffer[PacketWritePtr++] = 0x7f;                         // Tier MSB
+    PacketBuffer[PacketWritePtr++] = 0xff;                         //
+    PacketBuffer[PacketWritePtr++] = 0xff;                         //
+    PacketBuffer[PacketWritePtr++] = 0xff;                         // Tier LSB
+    PacketBuffer[PacketWritePtr++] = 0x7f;                         // Mystery
+    PacketBuffer[PacketWritePtr++] = 0x80;                         // Mystery
+    PacketBuffer[PacketWritePtr++] = (LastPacket ? 0x10 : 0x00) |
+      ((PacketNumber == 0) ? 0xa1 : 0x20);     // Packet Type, bit 4 (0x10) marks end of segment
+    PacketBuffer[PacketWritePtr++] = (PacketNumber >> 0) & 0xff;   // Packet Number LSB
+    PacketBuffer[PacketWritePtr++] = (PacketNumber >> 8) & 0xff;   // Packet Number MSB
+    PacketBuffer[PacketWritePtr++] = (PacketOffset >> 8) & 0xff;   // Offset MSB
+    PacketBuffer[PacketWritePtr++] = (PacketOffset >> 0) & 0xff;   // Offset LSB
+
+    // Copy the payload
+    for(i = 0; i < PayloadSize; i++) {
+        PacketBuffer[PacketWritePtr++] = *buf++;
+    }
+
+    // CRC the packet
+    for(i = 0; i < PacketWritePtr; i++) {
+        crc = crc_update(crc, PacketBuffer[i]);
+    }
+
+    // Write the check bytes
+    PacketBuffer[PacketWritePtr++] = ((crc >> 8) & 0xff) ^ 0xff;
+    PacketBuffer[PacketWritePtr++] = ((crc >> 0) & 0xff) ^ 0xff;
+
+    printf("Sending %sPacket %02x of Segment %06x, %d bytes, %d payload bytes\r\n", (LastPacket ? "Last " : ""), PacketNumber, SegmentNumber, PacketWritePtr, PayloadSize);
+
+    return sendPacketizedData(PacketBuffer, PacketWritePtr);
 }
-
-void assemblePacket(uint16_t size, PacketHeader_t *header, void *data) {
-    uint16_t buffer = newPacketBuffer();
-    uint16_t checksum = 0;
-
-    if(buffer >= MAXPACKET) return;
-
-    memcpy(PacketBuffer[buffer], header, 16);
-    memcpy(PacketBuffer[buffer]+16, data, size);
-    // TODO: calculate checksum
-    memcpy(PacketBuffer[buffer]+16+size, &checksum, 2);
-
-    schedulePacketPayload(buffer, size+18);
-}
-
-void newTimePacket() {
-    uint16_t buffer = newPacketBuffer();
-    uint16_t size = 9;
-    uint16_t checksum = 0;
-    PacketHeader_t header;
-    TimePacket_t TimePacket;
-
-    if(buffer >= MAXPACKET) return;
-
-    header.segment[0] = 0x7F;
-    header.segment[1] = 0xFF;
-    header.segment[2] = 0xFF;
-    header.id = 0x00;
-    header.owner = 0x00;
-    header.tier[0] = 0x7F;
-    header.tier[1] = 0xFF;
-    header.tier[2] = 0xFF;
-    header.tier[3] = 0xFF;
-    header.mystery[0] = 0x7F;
-    header.mystery[1] = 0x80;
-    header.type = 0x30;
-    header.number[0] = 0x00;
-    header.offset[1] = 0x00;
-    header.number[0] = 0x00;
-    header.offset[1] = 0x00;
-
-    TimePacket.data[0] = 0x02;
-    TimePacket.data[1] = 0x02;
-    TimePacket.data[2] = 0x02;
-    TimePacket.data[3] = 0x54;
-    TimePacket.data[4] = 0x01;
-    TimePacket.data[5] = 0x01;
-    TimePacket.data[6] = 0x00;
-    TimePacket.data[7] = 0x00;
-    TimePacket.data[8] = 0x00;
-
-    memcpy(PacketBuffer[buffer], &header, 16);
-    memcpy(PacketBuffer[buffer]+16, &TimePacket, size);
-
-    // TODO: calculate checksum
-    PacketBuffer[buffer][16+size] = 0xd5;
-    PacketBuffer[buffer][16+size] = 0x3b;
-
-    schedulePacketPayload(buffer, size+18);
-}
-

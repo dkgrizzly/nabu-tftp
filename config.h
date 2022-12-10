@@ -1,12 +1,19 @@
 #pragma once
 
+#define CONFIG_VER 0x00000003
+
 #define CONFIG_SYSCLOCK 114.0 /* MHz */
 
-#define CONFIG_SERIAL_BAUD 111000
+#define CONFIG_SERIAL_BAUD 111816
 
-// Pin configuration
-#define CONFIG_PIN_U2_TX 0 /* 2 pins */
-#define CONFIG_PIN_U2_RX 2 /* 2 pins */
+extern char wifi_ssid[64];
+extern char wifi_psk[64];
+extern uint32_t wifi_auth;
 
-#define CONFIG_PIN_U3_TX 4 /* 2 pins */
-#define CONFIG_PIN_U3_RX 6 /* 2 pins */
+extern char tftp_server_ip[64];
+
+extern int configured;
+
+extern void writeConfig();
+extern void readConfig();
+extern void configWizard();

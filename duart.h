@@ -7,9 +7,14 @@ enum {
     U3_RX_SM = 3,
 };
 
+extern uint32_t hardwaremode;
+
 extern uint16_t __time_critical_func(duart_readByteNonblocking)();
 extern uint8_t __time_critical_func(duart_readByteBlocking)();
 extern uint16_t __time_critical_func(duart_readByteExpected)(uint8_t ExpectedChar, uint32_t Timeout);
 extern uint16_t __time_critical_func(duart_readByteTimeout)(uint32_t Timeout);
 extern void __time_critical_func(duart_sendByte)(uint8_t ch);
+extern void __time_critical_func(duart_sendBytes)(uint8_t *buf, uint16_t sz);
+extern void __time_critical_func(duart_sendRawByte)(uint8_t ch);
+extern void __time_critical_func(duart_sendRawBytes)(uint8_t *buf, uint16_t sz);
 extern void duart_init();
