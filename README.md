@@ -45,17 +45,16 @@ After cloning this repository, initialize the cmake:
 
 ```
 $ cd nabu-tftp
-$ mkdir build
-$ cd build
-$ PICO_SDK_PATH=<path where you cloned pico-sdk> cmake ..
+$ git submodule update --init
+$ PICO_SDK_PATH=<path where you cloned pico-sdk> cmake -S . -B build
 ```
 
 This will take a few minutes...
 
-You can now run make in the build folder to generate the nabutftp.uf2 file for flashing your Pico-W
+You can now generate the nabutftp.uf2 file for flashing your Pico-W
 
 ```
-$ make
+$ cmake --build build
 ```
 
 
